@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -9,10 +11,19 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Xml.Serialization;
 using Microsoft.WindowsAPICodePack.Shell;
 using VideoLibrary.Models;
 
 namespace VideoLibrary.ViewModels;
+
+public class VideoExportItem
+{
+    public string FileName { get; set; } = string.Empty;
+    public string FolderPath { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public long SizeBytes { get; set; }
+}
 
 public class MainViewModel : INotifyPropertyChanged
 {
@@ -62,8 +73,23 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand StartScanCommand { get; }
     public ICommand ApplyFilterCommand { get; }
     public ICommand OpenItemCommand { get; }
+    public ICommand SaveResultsCommand { get; }
 
-    private string? _lastFolderFile = null;
+    private const string LastFolderSettingKey = "LastFolder";
+    private const string LastExportPathSettingKey = "LastExportPath";
+
+    private bool _canSaveResults;
+    public bool CanSaveResults
+    {
+        get => _canSaveResults;
+        private set
+        {
+            if (_canSaveResults == value) return;
+            _canSaveResults = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSaveResults)));
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
 
     private bool _isScanning;
     public bool IsScanning
@@ -74,6 +100,7 @@ public class MainViewModel : INotifyPropertyChanged
             if (_isScanning == value) return;
             _isScanning = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScanning)));
+            UpdateCanSaveResults();
         }
     }
 
@@ -110,18 +137,21 @@ public class MainViewModel : INotifyPropertyChanged
         StartScanCommand = new RelayCommand(async _ => await StartScanAsync());
         ApplyFilterCommand = new RelayCommand(_ => ApplyFilter());
         OpenItemCommand = new RelayCommand(p => OpenItem(p as VideoItem));
+        SaveResultsCommand = new RelayCommand(_ => SaveResults(), _ => CanSaveResults);
 
-        _lastFolderFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VideoLibrary", "last_folder.txt");
+        Items.CollectionChanged += (_, _) => UpdateCanSaveResults();
+
         try
         {
-            if (File.Exists(_lastFolderFile))
+            var savedFolder = LoadSetting(LastFolderSettingKey);
+            if (!string.IsNullOrWhiteSpace(savedFolder) && Directory.Exists(savedFolder))
             {
-                var last = File.ReadAllText(_lastFolderFile).Trim();
-                if (Directory.Exists(last))
-                    RootFolder = last; // do not auto-scan on startup
+                RootFolder = savedFolder!; // do not auto-scan on startup
             }
         }
         catch { }
+
+        UpdateCanSaveResults();
     }
 
     private void ApplyFilter()
@@ -134,6 +164,11 @@ public class MainViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(RootFolder) || !Directory.Exists(RootFolder)) return;
         await LoadFolderAsync(RootFolder);
         SaveLastFolder(RootFolder);
+    }
+
+    private void UpdateCanSaveResults()
+    {
+        CanSaveResults = !IsScanning && Items.Count > 0;
     }
 
     private bool Filter(object obj)
@@ -163,17 +198,49 @@ public class MainViewModel : INotifyPropertyChanged
 
         if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
         {
-            RootFolder = folder;
+            RootFolder = folder!;
         }
     }
 
     private void SaveLastFolder(string folder)
     {
+        SaveSetting(LastFolderSettingKey, folder);
+    }
+
+    private string? LoadSetting(string key)
+    {
         try
         {
-            var dir = Path.GetDirectoryName(_lastFolderFile!)!;
-            Directory.CreateDirectory(dir);
-            File.WriteAllText(_lastFolderFile!, folder);
+            var config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+            var setting = config.AppSettings.Settings[key];
+            if (setting?.Value is not null)
+                return setting.Value;
+
+            return ConfigurationManager.AppSettings[key];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void SaveSetting(string key, string? value)
+    {
+        try
+        {
+            var config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+            var setting = config.AppSettings.Settings[key];
+            if (setting is null)
+            {
+                config.AppSettings.Settings.Add(key, value ?? string.Empty);
+            }
+            else
+            {
+                setting.Value = value ?? string.Empty;
+            }
+
+            config.Save(ConfigurationSaveMode.Modified);
+            ConfigurationManager.RefreshSection("appSettings");
         }
         catch { }
     }
@@ -184,6 +251,7 @@ public class MainViewModel : INotifyPropertyChanged
         IsScanning = true;
         Progress = 0;
         StatusText = "Scanning...";
+        UpdateCanSaveResults();
 
         await Task.Run(() =>
         {
@@ -224,6 +292,60 @@ public class MainViewModel : INotifyPropertyChanged
         IsScanning = false;
         Progress = 0;
         StatusText = $"Completed. {Items.Count} videos found.";
+        UpdateCanSaveResults();
+    }
+
+    private void SaveResults()
+    {
+        if (Items.Count == 0)
+        {
+            StatusText = "There are no results to save yet.";
+            return;
+        }
+
+        var lastExportPath = LoadSetting(LastExportPathSettingKey);
+        using var dialog = new System.Windows.Forms.SaveFileDialog
+        {
+            Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
+            DefaultExt = "xml",
+            FileName = Path.GetFileName(lastExportPath) ?? "VideoLibraryResults.xml"
+        };
+
+        if (!string.IsNullOrWhiteSpace(lastExportPath))
+        {
+            var directory = Path.GetDirectoryName(lastExportPath);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+            {
+                dialog.InitialDirectory = directory;
+            }
+        }
+
+        var result = dialog.ShowDialog();
+        if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+            return;
+
+        try
+        {
+            var exportFileName = dialog.FileName ?? string.Empty;
+            var exportItems = Items.Select(item => new VideoExportItem
+            {
+                FileName = item.FileName,
+                FolderPath = item.FolderPath,
+                FullPath = item.FullPath,
+                SizeBytes = item.SizeBytes
+            }).ToList();
+
+            var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
+            using var writer = new StreamWriter(exportFileName);
+            serializer.Serialize(writer, exportItems);
+
+            SaveSetting(LastExportPathSettingKey, exportFileName);
+            StatusText = $"Saved {exportItems.Count} videos to {Path.GetFileName(exportFileName)}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Could not save results: {ex.Message}";
+        }
     }
 
     private ImageSource? GenerateThumbnailSafe(string file)

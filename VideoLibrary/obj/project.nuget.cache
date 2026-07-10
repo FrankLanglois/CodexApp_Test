@@ -1,11 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "jessupI+brs=",
+  "dgSpecHash": "LC3kLVzdL38=",
   "success": true,
   "projectFilePath": "C:\\Users\\Frank\\Documents\\Frank-Dev\\CodexApp_Test\\CodexApp_Test\\VideoLibrary\\VideoLibrary.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Frank\\.nuget\\packages\\microsoft.windowsapicodepack.core\\1.1.0\\microsoft.windowsapicodepack.core.1.1.0.nupkg.sha512",
-    "C:\\Users\\Frank\\.nuget\\packages\\microsoft.windowsapicodepack.shell\\1.1.0\\microsoft.windowsapicodepack.shell.1.1.0.nupkg.sha512"
+    "C:\\Users\\Frank\\.nuget\\packages\\microsoft.windowsapicodepack.shell\\1.1.0\\microsoft.windowsapicodepack.shell.1.1.0.nupkg.sha512",
+    "C:\\Users\\Frank\\.nuget\\packages\\system.configuration.configurationmanager\\8.0.0\\system.configuration.configurationmanager.8.0.0.nupkg.sha512"
   ],
   "logs": []
 }
