@@ -6,7 +6,8 @@
         xmlns:local="clr-namespace:VideoLibrary"
         xmlns:vm="clr-namespace:VideoLibrary.ViewModels"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="Video List App" Height="675" Width="1200"
+        Background="#EAF4FF">
     <Window.Resources>
         <vm:SizeConverter x:Key="SizeConverter" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -17,38 +18,45 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
 
-        <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
-            <Button Width="120" Margin="0,0,8,0" Content="Pick Folder..." Command="{Binding PickFolderCommand}" />
-            <TextBox Width="360" Margin="0,0,8,0" Text="{Binding RootFolder}" IsReadOnly="True" />
-            <Button Width="100" Content="Start Scan" Command="{Binding StartScanCommand}" />
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,8">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Width="120" Margin="0,0,8,0" Content="Pick Folder..." Command="{Binding PickFolderCommand}" />
+                <TextBox Width="360" Margin="0,0,8,0" Text="{Binding RootFolder}" IsReadOnly="True" />
+                <Button Width="100" Content="Start Scan" Command="{Binding StartScanCommand}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button Width="150" Margin="0,0,8,0" Content="Load Last Results" Command="{Binding LoadLastResultsCommand}" />
+                <Button Width="160" Margin="0,0,8,0" Content="Load Previous Results" Command="{Binding LoadResultsCommand}" />
+                <Button Width="120" Content="Save Results" Command="{Binding SaveResultsCommand}" IsEnabled="{Binding CanSaveResults}" />
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
             <TextBox Width="300" Margin="0,0,8,0" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
             <Button Width="100" Content="Apply Filter" Command="{Binding ApplyFilterCommand}" />
-            <Button Width="160" Margin="8,0,0,0" Content="Load Previous Results" Command="{Binding LoadResultsCommand}" />
-            <Button Width="120" Margin="8,0,0,0" Content="Save Results" Command="{Binding SaveResultsCommand}" IsEnabled="{Binding CanSaveResults}" />
         </StackPanel>
 
-        <ProgressBar Grid.Row="2" Height="16" Margin="0,0,0,8" Value="{Binding Progress, Mode=OneWay}" Maximum="100" Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}" />
+        <Grid Grid.Row="3" Margin="0,0,0,8">
+            <ProgressBar Height="16" Value="{Binding Progress, Mode=OneWay}" Maximum="100" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" IsIndeterminate="{Binding IsLoadingResults}" />
+        </Grid>
 
-        <TextBlock Grid.Row="3" Text="Double-click a row to open the video." Foreground="Gray" Margin="2,0,0,4" />
+        <TextBlock Grid.Row="4" Text="Double-click a row to open the video." Foreground="Gray" Margin="2,0,0,4" />
 
-        <TextBlock Grid.Row="3" Text="{Binding StatusText}" Foreground="Gray" Margin="200,0,0,8" HorizontalAlignment="Left" />
+        <TextBlock Grid.Row="4" Text="{Binding StatusText}" Foreground="Gray" Margin="200,0,0,8" HorizontalAlignment="Left" />
 
-        <DataGrid Grid.Row="3" ItemsSource="{Binding ItemsView}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MouseDoubleClick="DataGrid_MouseDoubleClick">
+        <DataGrid Grid.Row="4" ItemsSource="{Binding ItemsView}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" MouseDoubleClick="DataGrid_MouseDoubleClick">
             <DataGrid.Columns>
-                <DataGridTemplateColumn Header="" Width="70">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Image Width="64" Height="64" Source="{Binding Thumbnail}" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Filename" Binding="{Binding FileName}" Width="*" />
                 <DataGridTextColumn Header="Folder" Binding="{Binding FolderPath}" Width="2*" />
                 <DataGridTextColumn Header="Size" Binding="{Binding SizeBytes, Converter={StaticResource SizeConverter}}" Width="120" />

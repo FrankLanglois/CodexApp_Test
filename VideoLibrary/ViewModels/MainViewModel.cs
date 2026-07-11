@@ -9,10 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
-using Microsoft.WindowsAPICodePack.Shell;
 using VideoLibrary.Models;
 
 namespace VideoLibrary.ViewModels;
@@ -75,6 +72,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand OpenItemCommand { get; }
     public ICommand SaveResultsCommand { get; }
     public ICommand LoadResultsCommand { get; }
+    public ICommand LoadLastResultsCommand { get; }
 
     private const string LastFolderSettingKey = "LastFolder";
     private const string LastExportPathSettingKey = "LastExportPath";
@@ -101,10 +99,28 @@ public class MainViewModel : INotifyPropertyChanged
             if (_isScanning == value) return;
             _isScanning = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScanning)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBusy)));
             UpdateCanSaveResults();
             CommandManager.InvalidateRequerySuggested();
         }
     }
+
+    private bool _isLoadingResults;
+    public bool IsLoadingResults
+    {
+        get => _isLoadingResults;
+        private set
+        {
+            if (_isLoadingResults == value) return;
+            _isLoadingResults = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLoadingResults)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBusy)));
+            UpdateCanSaveResults();
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    public bool IsBusy => IsScanning || IsLoadingResults;
 
     private double _progress;
     public double Progress
@@ -140,7 +156,8 @@ public class MainViewModel : INotifyPropertyChanged
         ApplyFilterCommand = new RelayCommand(_ => ApplyFilter());
         OpenItemCommand = new RelayCommand(p => OpenItem(p as VideoItem));
         SaveResultsCommand = new RelayCommand(_ => SaveResults(), _ => CanSaveResults);
-        LoadResultsCommand = new RelayCommand(_ => LoadResults(), _ => !IsScanning);
+        LoadResultsCommand = new RelayCommand(_ => _ = LoadResultsAsync(), _ => !IsBusy);
+        LoadLastResultsCommand = new RelayCommand(_ => _ = LoadLastResultsAsync(), _ => !IsBusy);
 
         Items.CollectionChanged += (_, _) => UpdateCanSaveResults();
 
@@ -171,7 +188,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     private void UpdateCanSaveResults()
     {
-        CanSaveResults = !IsScanning && Items.Count > 0;
+        CanSaveResults = !IsScanning && !IsLoadingResults && Items.Count > 0;
     }
 
     private bool Filter(object obj)
@@ -269,14 +286,12 @@ public class MainViewModel : INotifyPropertyChanged
                 try
                 {
                     var fi = new FileInfo(f);
-                    var thumb = GenerateThumbnailSafe(f);
                     var item = new VideoItem
                     {
                         FileName = Path.GetFileName(f),
                         FolderPath = Path.GetDirectoryName(f) ?? string.Empty,
                         FullPath = f,
-                        SizeBytes = fi.Length,
-                        Thumbnail = thumb
+                        SizeBytes = fi.Length
                     };
                     System.Windows.Application.Current.Dispatcher.Invoke(() => Items.Add(item));
 
@@ -351,7 +366,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private void LoadResults()
+    private async Task LoadResultsAsync()
     {
         var lastExportPath = LoadSetting(LastExportPathSettingKey);
         using var dialog = new System.Windows.Forms.OpenFileDialog
@@ -376,84 +391,72 @@ public class MainViewModel : INotifyPropertyChanged
         if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
             return;
 
+        await LoadResultsFromFileAsync(dialog.FileName!);
+    }
+
+    private async Task LoadLastResultsAsync()
+    {
+        var lastExportPath = LoadSetting(LastExportPathSettingKey);
+        if (string.IsNullOrWhiteSpace(lastExportPath) || !File.Exists(lastExportPath))
+        {
+            StatusText = "No previous results file is available.";
+            return;
+        }
+
+        await LoadResultsFromFileAsync(lastExportPath!);
+    }
+
+    private async Task LoadResultsFromFileAsync(string loadPath)
+    {
+        IsLoadingResults = true;
+        StatusText = "Loading results...";
         try
         {
-            var loadPath = dialog.FileName;
-            var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
-            using var reader = new StreamReader(loadPath);
-            if (serializer.Deserialize(reader) is not List<VideoExportItem> loadedItems)
+            var loadedItems = await Task.Run(() =>
+            {
+                var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
+                using var reader = new StreamReader(loadPath);
+                return serializer.Deserialize(reader) as List<VideoExportItem>;
+            });
+
+            if (loadedItems is null)
             {
                 StatusText = "Loaded file does not contain valid results.";
                 return;
             }
 
-            Items.Clear();
+            var videoItems = new List<VideoItem>();
             foreach (var loadedItem in loadedItems)
             {
-                Items.Add(new VideoItem
+                videoItems.Add(new VideoItem
                 {
                     FileName = loadedItem.FileName,
                     FolderPath = loadedItem.FolderPath,
                     FullPath = loadedItem.FullPath,
-                    SizeBytes = loadedItem.SizeBytes,
-                    Thumbnail = GenerateThumbnailSafe(loadedItem.FullPath)
+                    SizeBytes = loadedItem.SizeBytes
                 });
             }
 
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                Items.Clear();
+                foreach (var item in videoItems)
+                {
+                    Items.Add(item);
+                }
+            });
+
             SaveSetting(LastExportPathSettingKey, loadPath);
-            StatusText = $"Loaded {Items.Count} previous results from {Path.GetFileName(loadPath)}.";
+            StatusText = $"Loaded {videoItems.Count} previous results from {Path.GetFileName(loadPath)}.";
         }
         catch (Exception ex)
         {
             StatusText = $"Could not load results: {ex.Message}";
         }
-    }
-
-    private ImageSource? GenerateThumbnailSafe(string file)
-    {
-        try
+        finally
         {
-            using var shellFile = ShellFile.FromFilePath(file);
-            // Try to get a thumbnail; fallback to null on failure.
-            var thumb = shellFile.Thumbnail?.ExtraLargeBitmap ?? shellFile.Thumbnail?.LargeBitmap ?? shellFile.Thumbnail?.MediumBitmap;
-            if (thumb != null)
-            {
-                var hbitmap = thumb.GetHbitmap();
-                try
-                {
-                    var src = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                        hbitmap,
-                        IntPtr.Zero,
-                        System.Windows.Int32Rect.Empty,
-                        BitmapSizeOptions.FromWidthAndHeight(64, 64));
-                    src.Freeze();
-                    return src;
-                }
-                finally
-                {
-                    NativeMethods.DeleteObject(hbitmap);
-                }
-            }
+            IsLoadingResults = false;
         }
-        catch { }
-
-        // Fallback: use application icon
-        try
-        {
-            var ico = System.Drawing.SystemIcons.Application;
-            using var bmp = ico.ToBitmap();
-            var h = bmp.GetHbitmap();
-            try
-            {
-                var src = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(h, IntPtr.Zero, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(64, 64));
-                src.Freeze();
-                return src;
-            }
-            finally { NativeMethods.DeleteObject(h); }
-        }
-        catch { }
-
-        return null;
     }
 
     private void OpenItem(VideoItem? item)
@@ -467,10 +470,4 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
-    private static class NativeMethods
-    {
-        [System.Runtime.InteropServices.DllImport("gdi32.dll")]
-        public static extern bool DeleteObject(IntPtr hObject);
-    }
 }
