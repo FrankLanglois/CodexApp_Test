@@ -74,6 +74,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand ApplyFilterCommand { get; }
     public ICommand OpenItemCommand { get; }
     public ICommand SaveResultsCommand { get; }
+    public ICommand LoadResultsCommand { get; }
 
     private const string LastFolderSettingKey = "LastFolder";
     private const string LastExportPathSettingKey = "LastExportPath";
@@ -101,6 +102,7 @@ public class MainViewModel : INotifyPropertyChanged
             _isScanning = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScanning)));
             UpdateCanSaveResults();
+            CommandManager.InvalidateRequerySuggested();
         }
     }
 
@@ -138,6 +140,7 @@ public class MainViewModel : INotifyPropertyChanged
         ApplyFilterCommand = new RelayCommand(_ => ApplyFilter());
         OpenItemCommand = new RelayCommand(p => OpenItem(p as VideoItem));
         SaveResultsCommand = new RelayCommand(_ => SaveResults(), _ => CanSaveResults);
+        LoadResultsCommand = new RelayCommand(_ => LoadResults(), _ => !IsScanning);
 
         Items.CollectionChanged += (_, _) => UpdateCanSaveResults();
 
@@ -345,6 +348,64 @@ public class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             StatusText = $"Could not save results: {ex.Message}";
+        }
+    }
+
+    private void LoadResults()
+    {
+        var lastExportPath = LoadSetting(LastExportPathSettingKey);
+        using var dialog = new System.Windows.Forms.OpenFileDialog
+        {
+            Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
+            DefaultExt = "xml",
+            CheckFileExists = true,
+            Title = "Load Previous Results"
+        };
+
+        if (!string.IsNullOrWhiteSpace(lastExportPath))
+        {
+            var directory = Path.GetDirectoryName(lastExportPath);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+            {
+                dialog.InitialDirectory = directory;
+                dialog.FileName = Path.GetFileName(lastExportPath);
+            }
+        }
+
+        var result = dialog.ShowDialog();
+        if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+            return;
+
+        try
+        {
+            var loadPath = dialog.FileName;
+            var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
+            using var reader = new StreamReader(loadPath);
+            if (serializer.Deserialize(reader) is not List<VideoExportItem> loadedItems)
+            {
+                StatusText = "Loaded file does not contain valid results.";
+                return;
+            }
+
+            Items.Clear();
+            foreach (var loadedItem in loadedItems)
+            {
+                Items.Add(new VideoItem
+                {
+                    FileName = loadedItem.FileName,
+                    FolderPath = loadedItem.FolderPath,
+                    FullPath = loadedItem.FullPath,
+                    SizeBytes = loadedItem.SizeBytes,
+                    Thumbnail = GenerateThumbnailSafe(loadedItem.FullPath)
+                });
+            }
+
+            SaveSetting(LastExportPathSettingKey, loadPath);
+            StatusText = $"Loaded {Items.Count} previous results from {Path.GetFileName(loadPath)}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Could not load results: {ex.Message}";
         }
     }
 

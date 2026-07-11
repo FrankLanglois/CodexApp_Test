@@ -30,6 +30,7 @@
         <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,8">
             <TextBox Width="300" Margin="0,0,8,0" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
             <Button Width="100" Content="Apply Filter" Command="{Binding ApplyFilterCommand}" />
+            <Button Width="160" Margin="8,0,0,0" Content="Load Previous Results" Command="{Binding LoadResultsCommand}" />
             <Button Width="120" Margin="8,0,0,0" Content="Save Results" Command="{Binding SaveResultsCommand}" IsEnabled="{Binding CanSaveResults}" />
         </StackPanel>
 
