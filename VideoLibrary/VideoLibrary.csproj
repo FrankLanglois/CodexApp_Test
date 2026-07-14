@@ -6,8 +6,16 @@
     <Nullable>enable</Nullable>
     <LangVersion>10.0</LangVersion>
     <UseWindowsForms>true</UseWindowsForms>
-    <UseWPF>true</UseWPF>
+    <StartupObject>VideoLibrary.Program</StartupObject>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="App.xaml.cs" />
+    <Compile Remove="MainWindow.xaml.cs" />
+    <Compile Remove="ViewModels\SizeConverter.cs" />
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Remove="MainWindow.xaml" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAPICodePack.Shell" Version="1.1.0" />

@@ -7,8 +7,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Data;
-using System.Windows.Input;
 using System.Xml.Serialization;
 using VideoLibrary.Models;
 
@@ -24,11 +22,12 @@ public class VideoExportItem
 
 public class MainViewModel : INotifyPropertyChanged
 {
-    private static readonly string[] VideoExtensions = new[] { ".mp4", ".mkv", ".avi", ".mov", ".wmv" };
+    private static readonly string[] VideoExtensions = { ".mp4", ".mkv", ".avi", ".mov", ".wmv" };
+
+    private readonly List<VideoItem> _allItems = new();
 
     public ObservableCollection<VideoItem> Items { get; } = new();
-    public ICollectionView ItemsView { get; }
-    
+
     private string _rootFolder = string.Empty;
     public string RootFolder
     {
@@ -37,7 +36,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_rootFolder == value) return;
             _rootFolder = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RootFolder)));
+            OnPropertyChanged();
         }
     }
 
@@ -49,7 +48,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_filterText == value) return;
             _filterText = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FilterText)));
+            OnPropertyChanged();
         }
     }
 
@@ -61,18 +60,10 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_search == value) return;
             _search = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Search)));
-            ItemsView.Refresh();
+            OnPropertyChanged();
+            RefreshFilteredItems();
         }
     }
-
-    public ICommand PickFolderCommand { get; }
-    public ICommand StartScanCommand { get; }
-    public ICommand ApplyFilterCommand { get; }
-    public ICommand OpenItemCommand { get; }
-    public ICommand SaveResultsCommand { get; }
-    public ICommand LoadResultsCommand { get; }
-    public ICommand LoadLastResultsCommand { get; }
 
     private const string LastFolderSettingKey = "LastFolder";
     private const string LastExportPathSettingKey = "LastExportPath";
@@ -85,8 +76,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_canSaveResults == value) return;
             _canSaveResults = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSaveResults)));
-            CommandManager.InvalidateRequerySuggested();
+            OnPropertyChanged();
         }
     }
 
@@ -98,10 +88,9 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_isScanning == value) return;
             _isScanning = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScanning)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBusy)));
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsBusy));
             UpdateCanSaveResults();
-            CommandManager.InvalidateRequerySuggested();
         }
     }
 
@@ -113,10 +102,9 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_isLoadingResults == value) return;
             _isLoadingResults = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLoadingResults)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBusy)));
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsBusy));
             UpdateCanSaveResults();
-            CommandManager.InvalidateRequerySuggested();
         }
     }
 
@@ -130,7 +118,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (Math.Abs(_progress - value) < 0.0001) return;
             _progress = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Progress)));
+            OnPropertyChanged();
         }
     }
 
@@ -142,84 +130,332 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_statusText == value) return;
             _statusText = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
+            OnPropertyChanged();
         }
     }
 
     public MainViewModel()
     {
-        ItemsView = CollectionViewSource.GetDefaultView(Items);
-        ItemsView.Filter = Filter;
-
-        PickFolderCommand = new RelayCommand(async _ => await PickFolderAsync());
-        StartScanCommand = new RelayCommand(async _ => await StartScanAsync());
-        ApplyFilterCommand = new RelayCommand(_ => ApplyFilter());
-        OpenItemCommand = new RelayCommand(p => OpenItem(p as VideoItem));
-        SaveResultsCommand = new RelayCommand(_ => SaveResults(), _ => CanSaveResults);
-        LoadResultsCommand = new RelayCommand(_ => _ = LoadResultsAsync(), _ => !IsBusy);
-        LoadLastResultsCommand = new RelayCommand(_ => _ = LoadLastResultsAsync(), _ => !IsBusy);
-
-        Items.CollectionChanged += (_, _) => UpdateCanSaveResults();
+        Items.CollectionChanged += (_, _) =>
+        {
+            UpdateCanSaveResults();
+            OnPropertyChanged(nameof(Items));
+        };
 
         try
         {
             var savedFolder = LoadSetting(LastFolderSettingKey);
             if (!string.IsNullOrWhiteSpace(savedFolder) && Directory.Exists(savedFolder))
             {
-                RootFolder = savedFolder!; // do not auto-scan on startup
+                RootFolder = savedFolder!;
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         UpdateCanSaveResults();
     }
 
-    private void ApplyFilter()
+    public void ApplyFilter()
     {
         Search = FilterText ?? string.Empty;
     }
 
-    private async Task StartScanAsync()
+    public async Task PickFolderAsync()
     {
-        if (string.IsNullOrWhiteSpace(RootFolder) || !Directory.Exists(RootFolder)) return;
-        await LoadFolderAsync(RootFolder);
-        SaveLastFolder(RootFolder);
-    }
-
-    private void UpdateCanSaveResults()
-    {
-        CanSaveResults = !IsScanning && !IsLoadingResults && Items.Count > 0;
-    }
-
-    private bool Filter(object obj)
-    {
-        if (obj is not VideoItem it) return false;
-        if (string.IsNullOrWhiteSpace(Search)) return true;
-        var q = Search.Trim();
-        return it.FileName.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
-            || it.FolderPath.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    private async Task PickFolderAsync()
-    {
-        // Use WinForms folder browser - must be shown on the UI thread
         string? folder = null;
         try
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            using var dlg = new System.Windows.Forms.FolderBrowserDialog();
+            var res = dlg.ShowDialog();
+            if (res == System.Windows.Forms.DialogResult.OK)
             {
-                using var dlg = new System.Windows.Forms.FolderBrowserDialog();
-                var res = dlg.ShowDialog();
-                if (res == System.Windows.Forms.DialogResult.OK)
-                    folder = dlg.SelectedPath;
-            });
+                folder = dlg.SelectedPath;
+            }
         }
-        catch { }
+        catch
+        {
+        }
 
         if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
         {
             RootFolder = folder!;
         }
+
+        await Task.CompletedTask;
+    }
+
+    public Task StartScanAsync()
+    {
+        if (string.IsNullOrWhiteSpace(RootFolder) || !Directory.Exists(RootFolder) || IsBusy)
+        {
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource<bool>();
+        var worker = new BackgroundWorker { WorkerReportsProgress = true };
+
+        worker.DoWork += (_, args) =>
+        {
+            var folder = (string)args.Argument!;
+            var discoveredItems = new List<VideoItem>();
+            var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
+                .Where(f => VideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+
+            var total = files.Length;
+            for (var i = 0; i < total; i++)
+            {
+                var filePath = files[i];
+                try
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    discoveredItems.Add(new VideoItem
+                    {
+                        FileName = Path.GetFileName(filePath),
+                        FolderPath = Path.GetDirectoryName(filePath) ?? string.Empty,
+                        FullPath = filePath,
+                        SizeBytes = fileInfo.Length
+                    });
+                }
+                catch
+                {
+                }
+
+                var percent = total == 0 ? 100 : (i + 1) * 100 / total;
+                worker.ReportProgress(percent, $"Scanning {i + 1} of {total}...");
+            }
+
+            args.Result = discoveredItems;
+        };
+
+        worker.ProgressChanged += (_, e) =>
+        {
+            Progress = Convert.ToDouble(e.ProgressPercentage);
+            StatusText = e.UserState as string ?? "Scanning...";
+        };
+
+        worker.RunWorkerCompleted += (_, e) =>
+        {
+            try
+            {
+                if (e.Error != null)
+                {
+                    StatusText = $"Could not scan folder: {e.Error.Message}";
+                }
+                else if (e.Result is List<VideoItem> discoveredItems)
+                {
+                    _allItems.Clear();
+                    _allItems.AddRange(discoveredItems);
+                    RefreshFilteredItems();
+                    StatusText = $"Completed. {Items.Count} videos found.";
+                    SaveLastFolder(RootFolder);
+                }
+            }
+            finally
+            {
+                IsScanning = false;
+                Progress = 0;
+                UpdateCanSaveResults();
+                tcs.TrySetResult(true);
+            }
+        };
+
+        IsScanning = true;
+        Progress = 0;
+        StatusText = "Scanning...";
+        UpdateCanSaveResults();
+        worker.RunWorkerAsync(RootFolder);
+        return tcs.Task;
+    }
+
+    public Task LoadResultsAsync()
+    {
+        var lastExportPath = LoadSetting(LastExportPathSettingKey);
+        using var dialog = new System.Windows.Forms.OpenFileDialog
+        {
+            Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
+            DefaultExt = "xml",
+            CheckFileExists = true,
+            Title = "Load Previous Results"
+        };
+
+        if (!string.IsNullOrWhiteSpace(lastExportPath))
+        {
+            var directory = Path.GetDirectoryName(lastExportPath);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+            {
+                dialog.InitialDirectory = directory;
+                dialog.FileName = Path.GetFileName(lastExportPath);
+            }
+        }
+
+        var result = dialog.ShowDialog();
+        if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return Task.CompletedTask;
+        }
+
+        return LoadResultsFromFileAsync(dialog.FileName!);
+    }
+
+    public Task LoadLastResultsAsync()
+    {
+        var lastExportPath = LoadSetting(LastExportPathSettingKey);
+        if (string.IsNullOrWhiteSpace(lastExportPath) || !File.Exists(lastExportPath))
+        {
+            StatusText = "No previous results file is available.";
+            return Task.CompletedTask;
+        }
+
+        return LoadResultsFromFileAsync(lastExportPath!);
+    }
+
+    public Task LoadResultsFromFileAsync(string loadPath)
+    {
+        if (IsBusy)
+        {
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource<bool>();
+        var worker = new BackgroundWorker { WorkerReportsProgress = false };
+
+        worker.DoWork += (_, args) =>
+        {
+            var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
+            using var reader = new StreamReader((string)args.Argument!);
+            var loadedItems = serializer.Deserialize(reader) as List<VideoExportItem>;
+            args.Result = loadedItems;
+        };
+
+        worker.RunWorkerCompleted += (_, e) =>
+        {
+            try
+            {
+                if (e.Error != null)
+                {
+                    StatusText = $"Could not load results: {e.Error.Message}";
+                }
+                else if (e.Result is List<VideoExportItem> loadedItems)
+                {
+                    var videoItems = loadedItems.Select(item => new VideoItem
+                    {
+                        FileName = item.FileName,
+                        FolderPath = item.FolderPath,
+                        FullPath = item.FullPath,
+                        SizeBytes = item.SizeBytes
+                    }).ToList();
+
+                    _allItems.Clear();
+                    _allItems.AddRange(videoItems);
+                    RefreshFilteredItems();
+                    SaveSetting(LastExportPathSettingKey, loadPath);
+                    StatusText = $"Loaded {videoItems.Count} previous results from {Path.GetFileName(loadPath)}.";
+                }
+            }
+            finally
+            {
+                IsLoadingResults = false;
+                tcs.TrySetResult(true);
+            }
+        };
+
+        IsLoadingResults = true;
+        StatusText = "Loading results...";
+        worker.RunWorkerAsync(loadPath);
+        return tcs.Task;
+    }
+
+    public void SaveResults()
+    {
+        if (Items.Count == 0)
+        {
+            StatusText = "There are no results to save yet.";
+            return;
+        }
+
+        var lastExportPath = LoadSetting(LastExportPathSettingKey);
+        using var dialog = new System.Windows.Forms.SaveFileDialog
+        {
+            Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
+            DefaultExt = "xml",
+            FileName = Path.GetFileName(lastExportPath) ?? "VideoLibraryResults.xml"
+        };
+
+        if (!string.IsNullOrWhiteSpace(lastExportPath))
+        {
+            var directory = Path.GetDirectoryName(lastExportPath);
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+            {
+                dialog.InitialDirectory = directory;
+            }
+        }
+
+        var result = dialog.ShowDialog();
+        if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        try
+        {
+            var exportFileName = dialog.FileName ?? string.Empty;
+            var exportItems = Items.Select(item => new VideoExportItem
+            {
+                FileName = item.FileName,
+                FolderPath = item.FolderPath,
+                FullPath = item.FullPath,
+                SizeBytes = item.SizeBytes
+            }).ToList();
+
+            var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
+            using var writer = new StreamWriter(exportFileName);
+            serializer.Serialize(writer, exportItems);
+
+            SaveSetting(LastExportPathSettingKey, exportFileName);
+            StatusText = $"Saved {exportItems.Count} videos to {Path.GetFileName(exportFileName)}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Could not save results: {ex.Message}";
+        }
+    }
+
+    public void OpenItem(VideoItem? item)
+    {
+        if (item == null) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(item.FullPath) { UseShellExecute = true });
+        }
+        catch
+        {
+        }
+    }
+
+    private void RefreshFilteredItems()
+    {
+        Items.Clear();
+        var query = Search.Trim();
+        var filtered = _allItems.Where(item => string.IsNullOrWhiteSpace(query)
+            || item.FileName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
+            || item.FolderPath.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
+
+        foreach (var item in filtered)
+        {
+            Items.Add(item);
+        }
+
+        OnPropertyChanged(nameof(Items));
+        OnPropertyChanged(nameof(ItemsChanged));
+        UpdateCanSaveResults();
+    }
+
+    private void UpdateCanSaveResults()
+    {
+        CanSaveResults = !IsScanning && !IsLoadingResults && Items.Count > 0;
     }
 
     private void SaveLastFolder(string folder)
@@ -234,7 +470,9 @@ public class MainViewModel : INotifyPropertyChanged
             var config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
             var setting = config.AppSettings.Settings[key];
             if (setting?.Value is not null)
+            {
                 return setting.Value;
+            }
 
             return ConfigurationManager.AppSettings[key];
         }
@@ -262,212 +500,17 @@ public class MainViewModel : INotifyPropertyChanged
             config.Save(ConfigurationSaveMode.Modified);
             ConfigurationManager.RefreshSection("appSettings");
         }
-        catch { }
-    }
-
-    private async Task LoadFolderAsync(string folder)
-    {
-        Items.Clear();
-        IsScanning = true;
-        Progress = 0;
-        StatusText = "Scanning...";
-        UpdateCanSaveResults();
-
-        await Task.Run(() =>
+        catch
         {
-            var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
-                .Where(f => VideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-                .ToArray();
-
-            var total = files.Length;
-            for (var i = 0; i < total; i++)
-            {
-                var f = files[i];
-                try
-                {
-                    var fi = new FileInfo(f);
-                    var item = new VideoItem
-                    {
-                        FileName = Path.GetFileName(f),
-                        FolderPath = Path.GetDirectoryName(f) ?? string.Empty,
-                        FullPath = f,
-                        SizeBytes = fi.Length
-                    };
-                    System.Windows.Application.Current.Dispatcher.Invoke(() => Items.Add(item));
-
-                    // update progress
-                    var percent = total == 0 ? 100 : ((i + 1) * 100.0 / total);
-                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        Progress = percent;
-                        StatusText = $"Scanning {i + 1} of {total}...";
-                    });
-                }
-                catch { }
-            }
-        });
-
-        IsScanning = false;
-        Progress = 0;
-        StatusText = $"Completed. {Items.Count} videos found.";
-        UpdateCanSaveResults();
-    }
-
-    private void SaveResults()
-    {
-        if (Items.Count == 0)
-        {
-            StatusText = "There are no results to save yet.";
-            return;
         }
-
-        var lastExportPath = LoadSetting(LastExportPathSettingKey);
-        using var dialog = new System.Windows.Forms.SaveFileDialog
-        {
-            Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
-            DefaultExt = "xml",
-            FileName = Path.GetFileName(lastExportPath) ?? "VideoLibraryResults.xml"
-        };
-
-        if (!string.IsNullOrWhiteSpace(lastExportPath))
-        {
-            var directory = Path.GetDirectoryName(lastExportPath);
-            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
-            {
-                dialog.InitialDirectory = directory;
-            }
-        }
-
-        var result = dialog.ShowDialog();
-        if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
-            return;
-
-        try
-        {
-            var exportFileName = dialog.FileName ?? string.Empty;
-            var exportItems = Items.Select(item => new VideoExportItem
-            {
-                FileName = item.FileName,
-                FolderPath = item.FolderPath,
-                FullPath = item.FullPath,
-                SizeBytes = item.SizeBytes
-            }).ToList();
-
-            var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
-            using var writer = new StreamWriter(exportFileName);
-            serializer.Serialize(writer, exportItems);
-
-            SaveSetting(LastExportPathSettingKey, exportFileName);
-            StatusText = $"Saved {exportItems.Count} videos to {Path.GetFileName(exportFileName)}.";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Could not save results: {ex.Message}";
-        }
-    }
-
-    private async Task LoadResultsAsync()
-    {
-        var lastExportPath = LoadSetting(LastExportPathSettingKey);
-        using var dialog = new System.Windows.Forms.OpenFileDialog
-        {
-            Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
-            DefaultExt = "xml",
-            CheckFileExists = true,
-            Title = "Load Previous Results"
-        };
-
-        if (!string.IsNullOrWhiteSpace(lastExportPath))
-        {
-            var directory = Path.GetDirectoryName(lastExportPath);
-            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
-            {
-                dialog.InitialDirectory = directory;
-                dialog.FileName = Path.GetFileName(lastExportPath);
-            }
-        }
-
-        var result = dialog.ShowDialog();
-        if (result != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
-            return;
-
-        await LoadResultsFromFileAsync(dialog.FileName!);
-    }
-
-    private async Task LoadLastResultsAsync()
-    {
-        var lastExportPath = LoadSetting(LastExportPathSettingKey);
-        if (string.IsNullOrWhiteSpace(lastExportPath) || !File.Exists(lastExportPath))
-        {
-            StatusText = "No previous results file is available.";
-            return;
-        }
-
-        await LoadResultsFromFileAsync(lastExportPath!);
-    }
-
-    private async Task LoadResultsFromFileAsync(string loadPath)
-    {
-        IsLoadingResults = true;
-        StatusText = "Loading results...";
-        try
-        {
-            var loadedItems = await Task.Run(() =>
-            {
-                var serializer = new XmlSerializer(typeof(List<VideoExportItem>));
-                using var reader = new StreamReader(loadPath);
-                return serializer.Deserialize(reader) as List<VideoExportItem>;
-            });
-
-            if (loadedItems is null)
-            {
-                StatusText = "Loaded file does not contain valid results.";
-                return;
-            }
-
-            var videoItems = new List<VideoItem>();
-            foreach (var loadedItem in loadedItems)
-            {
-                videoItems.Add(new VideoItem
-                {
-                    FileName = loadedItem.FileName,
-                    FolderPath = loadedItem.FolderPath,
-                    FullPath = loadedItem.FullPath,
-                    SizeBytes = loadedItem.SizeBytes
-                });
-            }
-
-            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                Items.Clear();
-                foreach (var item in videoItems)
-                {
-                    Items.Add(item);
-                }
-            });
-
-            SaveSetting(LastExportPathSettingKey, loadPath);
-            StatusText = $"Loaded {videoItems.Count} previous results from {Path.GetFileName(loadPath)}.";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Could not load results: {ex.Message}";
-        }
-        finally
-        {
-            IsLoadingResults = false;
-        }
-    }
-
-    private void OpenItem(VideoItem? item)
-    {
-        if (item == null) return;
-        try
-        {
-            Process.Start(new ProcessStartInfo(item.FullPath) { UseShellExecute = true });
-        }
-        catch { }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged(string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public string ItemsChanged => string.Empty;
 }

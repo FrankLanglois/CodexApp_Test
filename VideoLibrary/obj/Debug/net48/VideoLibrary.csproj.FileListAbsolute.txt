@@ -1,15 +1,9 @@
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.csproj.AssemblyReference.cache
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\MainWindow.g.cs
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\App.g.cs
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary_MarkupCompile.cache
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary_MarkupCompile.lref
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\bin\Debug\net48\VideoLibrary.exe.config
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\bin\Debug\net48\VideoLibrary.exe
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\bin\Debug\net48\VideoLibrary.pdb
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\bin\Debug\net48\Microsoft.WindowsAPICodePack.dll
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\bin\Debug\net48\Microsoft.WindowsAPICodePack.Shell.dll
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\MainWindow.baml
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.g.resources
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.GeneratedMSBuildEditorConfig.editorconfig
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.AssemblyInfoInputs.cache
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.AssemblyInfo.cs
@@ -17,6 +11,5 @@ C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLib.9218F7D7.Up2Date
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.exe
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.pdb
-C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\GeneratedInternalTypeHelper.g.cs
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\obj\Debug\net48\VideoLibrary.sourcelink.json
 C:\Users\Frank\Documents\Frank-Dev\CodexApp_Test\CodexApp_Test\VideoLibrary\bin\Debug\net48\System.Configuration.ConfigurationManager.dll

@@ -1,9 +1,8 @@
 using System;
-using System.Windows.Input;
 
 namespace VideoLibrary.ViewModels;
 
-public class RelayCommand : ICommand
+public class RelayCommand
 {
     private readonly Action<object?> _execute;
     private readonly Func<object?, bool>? _canExecute;
@@ -17,10 +16,4 @@ public class RelayCommand : ICommand
     public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
 
     public void Execute(object? parameter) => _execute(parameter);
-
-    public event EventHandler? CanExecuteChanged
-    {
-        add => CommandManager.RequerySuggested += value;
-        remove => CommandManager.RequerySuggested -= value;
-    }
 }
