@@ -36,7 +36,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_rootFolder == value) return;
             _rootFolder = value;
-            OnPropertyChanged();
+            OnPropertyChanged(nameof(RootFolder));
         }
     }
 
@@ -48,7 +48,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_filterText == value) return;
             _filterText = value;
-            OnPropertyChanged();
+            OnPropertyChanged(nameof(FilterText));
         }
     }
 
@@ -60,7 +60,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_search == value) return;
             _search = value;
-            OnPropertyChanged();
+            OnPropertyChanged(nameof(Search));
             RefreshFilteredItems();
         }
     }
@@ -205,6 +205,7 @@ public class MainViewModel : INotifyPropertyChanged
                 .ToArray();
 
             var total = files.Length;
+            var reportEvery = Math.Max(1, total / 100);
             for (var i = 0; i < total; i++)
             {
                 var filePath = files[i];
@@ -223,8 +224,11 @@ public class MainViewModel : INotifyPropertyChanged
                 {
                 }
 
-                var percent = total == 0 ? 100 : (i + 1) * 100 / total;
-                worker.ReportProgress(percent, $"Scanning {i + 1} of {total}...");
+                if (i % reportEvery == 0 || i == total - 1)
+                {
+                    var percent = total == 0 ? 100 : (int)Math.Round((i + 1) * 100.0 / total);
+                    worker.ReportProgress(percent, $"Scanning {i + 1} of {total}...");
+                }
             }
 
             args.Result = discoveredItems;

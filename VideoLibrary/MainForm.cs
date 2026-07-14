@@ -249,7 +249,11 @@ public partial class MainForm : Form
             else if (e.PropertyName == nameof(MainViewModel.IsBusy))
             {
                 _progressBar.Visible = _viewModel.IsBusy;
-                _progressBar.Style = ProgressBarStyle.Marquee;
+                _progressBar.Style = ProgressBarStyle.Continuous;
+                if (!_viewModel.IsBusy)
+                {
+                    _progressBar.Value = 0;
+                }
             }
         };
     }
